@@ -1,0 +1,100 @@
+---
+title: "Quant_Group_1"
+author: "E.Sheild_N.Levine_G.Barrett-Jackson"
+date: "10/25/21"
+output: 
+  html_document:
+    theme: readable
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tigris)
+library(tidycensus)
+library(readxl)
+library(knitr)
+library(sf)
+library(tidyverse)
+library(ggthemes)
+library(units)
+library(nngeo)
+library(osmextract)
+library(tidygeocoder)
+library(tmap)
+library(rmapshaper)
+library(zonebuilder)
+library(ggspatial)
+```
+
+```{r, message=FALSE, warning=FALSE}
+dir.create("networks")
+
+LA_file <- oe_match("Los Angeles")
+```
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+city_boundary <- st_read("networks/City_Boundary.geojson") 
+```
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+CA5_state_plane <- "+proj=lcc +lat_1=34.03333333333333 +lat_2=35.46666666666667 +lat_0=33.5 +lon_0=-118 +x_0=2000000 +y_0=500000 +ellps=GRS80 +units=m +no_defs"
+
+la_city_limits <- places("California") %>%
+   filter(NAME == "Los Angeles") %>%
+   st_transform(crs = st_crs(city_boundary))
+
+city_boundary <- city_boundary[la_city_limits,]
+```
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+
+acs_all <- get_acs(geography = "tract", year = 2019, state = "CA", county = "Los Angeles", variables = c(white_ = "B02001_002", med_income_ = "B21004_001", res_new_ = "B07001_049", transport_ = "B08301_018"), output = "wide", geometry = TRUE)
+
+pl <- places(state = "CA", cb = TRUE)
+
+la.city <- filter(pl, NAME == "Los Angeles")
+
+acs_la_tracts <- ms_clip(target = acs_all, clip = la.city, remove_slivers = TRUE)
+
+```
+
+Help! 
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+
+la_tracts <- st_read("networks/Census_Tracts_2010_Population.geojson")
+
+bike_racks <- st_read("networks/Bike_Racks_RepairStation_Corrals.geojson") %>%
+  st_filter(la_city_limits) 
+
+bike_racks <- bike_racks %>%
+  mutate(num_bike_racks = lengths(st_covers(la_tracts, bike_racks))) %>%
+  mutate(area = set_units(st_area(la_tracts), mi^2)) %>%
+  mutate(rack_dens = as.numeric(num_bike_racks / area))
+
+```
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+bike_risks <- st_read("networks/bike_risks.geojson") 
+bike_risks<-bike_risks %>%
+  st_transform("WGS84")
+
+bike_risks <- bike_risks[la_city_limits,] 
+
+```
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+
+data <- left_join(acs_la_tracts, bike_risks) %>%
+  left_join(bike_racks)
+
+kable(head(data))
+
+```
