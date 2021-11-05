@@ -1,0 +1,374 @@
+---
+title: "Quant_Group_1"
+author: "E.Sheild_N.Levine_G.Barrett-Jackson"
+date: "11/01/21"
+output: 
+  html_document:
+    theme: readable
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Research Question
+
+What is the relationship between the installation of bicycle facilities and gentrification in the City of Los Angeles?
+
+# Prior Research
+
+Exploring the relationship between the installation of bicycle facilities and socioeconomic and demographic changes in 29 US cities, Ferenchak and Wesley (2021) find "weak and largely non-significant" relationships of causality. Focusing on Portland, OR and Chicago, IL, Flanagan et al. (2016) "identify a bias towards increased cycling infrastructure investment in areas of existing or increasing privilege." Following Davis (2021), we conceptualize gentrification in terms of growth in the white population as well as increase in median household income.Our hope over the course of the module is to continue identifying gaps in that research that can better refine our own approach to contribute to the broader research body of social determinants of bicycle infrastructure and ridership.
+
+## Current News Articles
+
+Our group also sought to explore current news articles related to this research area. They can be found in the bibliography.
+
+# Data
+
+The sample population for this study is the all census tracts in the City of Los Angeles. The analysis will include the following categorical and continuous variables:
+
+## Categorical Variables
+
+-   Tenure: 2019 American Communities Survey (ACS) "Did this person live in this house or apartment 5 years ago?"
+
+-   Race (White): 2019 American Communities Survey (ACS) "What is Person 1's race?"
+
+ACS Defines "White. A person having origins in any of the original peoples of Europe, the Middle East, or North Africa. It includes people who indicate their race as "White" or report entries such as Irish, German, Italian, Lebanese, Arab, Moroccan, or Caucasian."
+
+The number of individuals identifying as white alone is initially a continuous variable, so we created a new column in our data for the total population within that census tract and converted each figure into a percentage. The average white alone population in the City of LA is 52.1%, so we then categorized the data into tracts with over 52.1% white (labeled as white) and tracts under 52.1% white (labeled as non-white). The categorical variable is now defined as binary_white.
+
+## Continious Variables
+
+-   Median Income: 2019 American Communities Survey (ACS) "What was this person's total income during the past 12 months?"
+
+-   Means of Transportation (Bike): 2019 American Communities Survey (ACS) "How did this person usually get to work last week?"
+
+-   Median Age: 2019 American Communities Survey (ACS)
+
+-   Bike Racks (Number): Open Street Maps, amenity=bicycle_parking
+
+Due to complications with our OSM data, our instructor recommended we continue with the assignment with solely ACS data, and return to our research question at a later date.
+
+# Load Data
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+library(tidyverse)
+library(tigris)
+library(tidycensus)
+library(readxl)
+library(knitr)
+library(sf)
+library(tidyverse)
+library(ggthemes)
+library(units)
+library(nngeo)
+library(osmextract)
+library(tidygeocoder)
+library(tmap)
+library(rmapshaper)
+library(zonebuilder)
+library(ggspatial)
+```
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+dir.create("networks")
+
+LA_file <- oe_match("Los Angeles")
+```
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+city_boundary <- st_read("networks/City_Boundary.geojson") 
+```
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+CA5_state_plane <- "+proj=lcc +lat_1=34.03333333333333 +lat_2=35.46666666666667 +lat_0=33.5 +lon_0=-118 +x_0=2000000 +y_0=500000 +ellps=GRS80 +units=m +no_defs"
+
+la_city_limits <- places("California") %>%
+   filter(NAME == "Los Angeles") %>%
+   st_transform(crs = st_crs(city_boundary))
+
+city_boundary <- city_boundary[la_city_limits,]
+```
+
+The below data is considered joined because we sourced it all at the same geography from the same source. There was no need to join the data, but the data did produce 1001 observations of 17 variables.
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+
+acs_all <- get_acs(geography = "tract", year = 2019, state = "CA", county = "Los Angeles", variables = c(white_ = "B02001_002", med_income_ = "B21004_001", res_new_ = "B07001_049", transport_ = "B08301_018", pop_ = "B01003_001", med_age_ = "B01002_001"), output = "wide", geometry = TRUE)
+
+pl <- places(state = "CA", cb = TRUE)
+
+la.city <- filter(pl, NAME == "Los Angeles")
+
+acs_la_tracts <- ms_clip(target = acs_all, clip = la.city, remove_slivers = TRUE)
+
+```
+
+Percent white
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+acs_la_tracts_new <- acs_la_tracts                              
+acs_la_tracts_new$percent_white <- acs_la_tracts$white_E/acs_la_tracts$pop_E
+acs_la_tracts_new 
+```
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+acs_la_tracts_new$binary_white <- ifelse(acs_la_tracts_new$percent_white > 0.521, "white", "non_white")
+```
+
+# Descriptive Statistics
+
+## Continuous Variables
+
+The continuous variables our group used are median income, mode of transportation to work, and median age.
+
+Calculations
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+inc_t_test <- t.test(acs_la_tracts_new$med_income_E)
+transport_t_test <- t.test(acs_la_tracts_new$transport_E)
+age_t_test <-t.test(acs_la_tracts_new$med_age_E)
+
+```
+
+### Median and interquartile range
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+inc_quartiles <- quantile(acs_la_tracts_new$med_income_E, na.rm = TRUE)
+transport_quartiles <- quantile(acs_la_tracts_new$transport_E, na.rm = TRUE)
+age_quartiles <- quantile(acs_la_tracts_new$med_age_E, na.rm = TRUE)
+
+```
+
+### Get standard deviation
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+inc_st_dev <- sd(acs_la_tracts_new$med_income_E, na.rm = TRUE)
+transport_st_dev <- sd(acs_la_tracts_new$transport_E, na.rm = TRUE)
+age_st_dev <- sd(acs_la_tracts_new$med_age_E, na.rm = TRUE)
+
+```
+
+### Displaying a histogram
+
+```{r, message=FALSE, warning=FALSE}
+inc_hist <- ggplot(acs_la_tracts_new) +
+  geom_histogram(aes(x = med_income_E),
+                 bins = 30)
+
+transport_hist <- ggplot(acs_la_tracts_new) +
+  geom_histogram(aes(x = transport_E),
+                 bins = 30)
+
+age_hist <- ggplot(acs_la_tracts_new) +
+  geom_histogram(aes(x = med_age_E),
+                 bins = 30)
+
+inc_hist
+transport_hist
+age_hist
+```
+
+### Displaying our results
+
+```{r, message=FALSE, warning=FALSE}
+cont_summary <- tibble(
+  Variable = c("Median Income", 
+               "Transport (Bike)", "Median Age"),
+  `Sample mean` = c(inc_t_test$estimate,
+                    transport_t_test$estimate, age_t_test$estimate * 1000),
+  `Population mean (95% confidence) - low` = 
+    c(inc_t_test$conf.int[1],
+      transport_t_test$conf.int[1], age_t_test$conf.int[1] * 1000),
+  `Population mean (95% confidence) - high` =
+    c(inc_t_test$conf.int[2],
+      transport_t_test$conf.int[2], age_t_test$conf.int[2] * 1000),
+  Median = c(inc_quartiles[3],
+             transport_quartiles[3], age_quartiles[3] * 1000),
+  `Interquartile range` = c(inc_quartiles[4] - inc_quartiles[2],
+                            transport_quartiles[4] - transport_quartiles[2], age_quartiles[4] - age_quartiles[2] * 1000),
+  `Standard deviation` = c(inc_st_dev,
+                          transport_st_dev, age_st_dev * 1000))
+
+kable(cont_summary, digits = 0)
+```
+
+## Categorical Variables
+
+Our two categorical variables are % white and new residents, to measure gentrification and tenure.
+
+```{r, message=FALSE, warning=FALSE}
+pct_white_maj <- t.test(acs_la_tracts_new$binary_white == "white")
+
+pct_white_min <- t.test(acs_la_tracts_new$binary_white == "non-white")
+```
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+acs_la_tracts_new2 <- acs_la_tracts_new                              
+acs_la_tracts_new2$percent_res_new <- acs_la_tracts_new$res_new_E/acs_la_tracts$pop_E
+acs_la_tracts_new2 
+```
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+res_t_test <- t.test(acs_la_tracts_new2$percent_res_new)
+```
+
+### Formatted table for white population
+
+```{r, message=FALSE, warning=FALSE}
+la_tract_summary <- tibble(`Race in Census Tracts` = 
+                              c("white_maj",
+                                "white_min"),
+                            `Sample proportion` = 
+                              c(pct_white_maj$estimate * 100,
+                                pct_white_min$estimate *100),
+                            `95-percent confidence - low` = 
+                              c(pct_white_maj$conf.int[1] * 100,
+                                pct_white_min$conf.int[1] * 100),
+                            `95-percent confidence - high` = 
+                              c(pct_white_maj$conf.int[2] * 100,
+                                pct_white_min$conf.int[2] * 100))
+
+kable(la_tract_summary, digits = 0)
+```
+
+### Formatted table for Tenure
+
+```{r, message=FALSE, warning=FALSE}
+la_tract_tenure <- tibble(`Tenure in Census Tracts` = 
+                              c("New Residents"),
+                            `Sample proportion` = 
+                              c(res_t_test$estimate * 100),
+                            `95-percent confidence - low` = 
+                              c(res_t_test$conf.int[1] * 100),
+                            `95-percent confidence - high` = 
+                              c(res_t_test$conf.int[2] * 100))
+
+kable(la_tract_tenure)
+```
+
+### Bar Chart % white
+
+```{r, message=FALSE, warning=FALSE}
+ggplot(la_tract_summary) +
+  geom_bar(aes(x = `Race in Census Tracts`, 
+               y = `Sample proportion`),
+           stat = "identity") +
+  geom_errorbar(aes(x = `Race in Census Tracts`, 
+               y = `Sample proportion`,
+               ymin = `95-percent confidence - low`,
+               ymax = `95-percent confidence - high`),
+           stat = "identity") +
+  scale_y_continuous(name = "Number of Tracts",
+                     breaks = c(0, 20, 40, 60, 80),
+                     labels = c("0", "20", "40", "60", "80")) +
+  theme_bw()
+```
+
+### Bar Chart for Tenure
+
+```{r, message=FALSE, warning=FALSE}
+ggplot(la_tract_summary) +
+  geom_bar(aes(x = `Race in Census Tracts`, 
+               y = `Sample proportion`),
+           stat = "identity") +
+  geom_errorbar(aes(x = `Race in Census Tracts`, 
+               y = `Sample proportion`,
+               ymin = `95-percent confidence - low`,
+               ymax = `95-percent confidence - high`),
+           stat = "identity") +
+  scale_y_continuous(name = "Number of Tracts",
+                     breaks = c(0, 20, 40, 60, 80),
+                     labels = c("0", "20", "40", "60", "80")) +
+  theme_bw()
+```
+
+# ASSIGNMENT 3
+
+Running correlation test between continuous variables. Until we get our bike data finalized, we will assume income is our dependant variable.
+
+```{r}
+cor.test(~ med_income_E + med_age_E, data = acs_la_tracts_new2)
+
+```
+In running a bivariate analysis between these two continious variables, our 95% confidence interval does not include zero, and all valuables are positive. This leads us to conclude, with 95% confidence, that the higher median ages as associated with higher levels of income. 
+
+Below we try the same method, but with a regression.
+
+```{r}
+age_model <- lm(med_income_E ~ med_age_E, data = acs_la_tracts_new2)
+summary(age_model)
+```
+Our p value here is 2e-16 rather than 2.23-16 (something we may want to clarify with the TAs or Carole), but also need to confirm if the R squared value of .3278 indeed the square of .573.
+
+## Density 
+
+We also choose to run an alaysis of median income with population density, to see if areas of higher income have less people living in that census tract. 
+
+```{r}
+cor.test(~ med_income_E + pop_E, data = acs_la_tracts_new2)
+
+```
+The P value does not equal zero, and the 95% confidence interval is all negative values. With the correlation coefficient being negative, we could say with 95% confidence that as the median income of a census tract does increase, the population of the census track decreases. 
+
+```{r}
+dens_model <- lm( med_income_E ~ pop_E, data = acs_la_tracts_new2)
+summary(dens_model)
+```
+The adjusted R-Squared in the above does match the correlation co-efficient in the above code. 
+
+# Difference in the mean of Categorical Variables 
+
+Until we can get our bike lane data clipped in ArcGis, we are presently curious in assessing if LA City tracks that are catorigized as white majority have higher levels of income than non-white majority tracts.
+
+```{r}
+t.test(med_income_E ~ binary_white, data = acs_la_tracts_new2)
+
+```
+In the above t-test, the 95% confidence interval is a very high negative number range that does not cross zero, and the p value is very small, indicating a strong correlation. We can say, with 95% confidence, that the mean median income in the group of non-white census tracts if 24,756.54 USD and the mean median income estimate in the group of white majority census tracts is 41,965.89 USD. This is a start confidence 
+
+We can run the same result as a regression 
+
+```{r}
+race_income_model <- lm(med_income_E ~ binary_white, data = acs_la_tracts_new2)
+
+summary(race_income_model)
+```
+The adjusted R squared in the linear regression does match the correlation coefficient in the above. 
+
+## Effect of Race on median income
+
+Where we are having issues!!! WE can also use regression to find the effect of race (% white) on income or try to access the other cateorical variable of % residnets new, but we need to further categorize that. 
+
+
+data <- data %>%
+  mutate(binary_white = as.factor(binary_white)) %>%
+  mutate(binary_white = relevel(binary_white, "white"))
+
+binary_white_model <- lm(med_income_E ~ binary_white, acs_la_tracts_new2)
+
+summary(binary_white_model)
+```
+
+# References
+
+-   Blame it on the bike: Does cycling contribute to a city's gentrification? \| Cities \| The Guardian. (n.d.). Retrieved October 25, 2021, from <https://www.theguardian.com/cities/2016/oct/05/blame-bike-cycling-contribute-city-gentrification>
+
+-   Davis, J. (2021, July 15). The double-edged sword of upzoning. Brookings. <https://www.brookings.edu/blog/how-we-rise/2021/07/15/the-double-edged-sword-of-upzoning/>
+
+-   Ferenchak, N. N., & Marshall, W. E. (2021). Bicycling facility inequalities and the causality dilemma with socioeconomic/sociodemographic change. Transportation Research Part D: Transport and Environment, 97, 102920. <https://doi.org/10.1016/j.trd.2021.102920>
+
+-   Flanagan, E., Lachapelle, U., & El-Geneidy, A. (2016). Riding tandem: Does cycling infrastructure investment mirror gentrification and privilege in Portland, OR and Chicago, IL? Research in Transportation Economics, 60, 14--24. <https://doi.org/10.1016/j.retrec.2016.07.027>
+
+-   LADOT Walk & Bike Count. (n.d.). LADOT. Retrieved October 25, 2021, from <https://ladot.lacity.org/walkbikecount>
+
+-   Radio, S. C. P. (700, 00:44). Watch a decade of growth in LA's bike infrastructure. Southern California Public Radio. <https://archive.kpcc.org/news/2015/04/10/50849/watch-a-decade-of-growth-in-la-s-bike-infrastructu/>
+
+-   What the Latest Census Data Says About L.A. City Bicycle Commuting. (2014, September 23). Streetsblog Los Angeles. <https://la.streetsblog.org/2014/09/23/what-the-latest-census-data-says-about-l-a-city-bicycle-commuting/>
+
+# Thank you
+
+Group 7 would like to thank Prof. Voulgaris and TAs for reviewing our work, and look forward to another semester.
