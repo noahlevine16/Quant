@@ -1,7 +1,7 @@
 ---
-title: "Quant_Group_1"
+title: "Quant_Group_7"
 author: "E.Sheild_N.Levine_G.Barrett-Jackson"
-date: "11/01/21"
+date: "11/08/21"
 output: 
   html_document:
     theme: readable
@@ -48,9 +48,7 @@ The number of individuals identifying as white alone is initially a continuous v
 
 -   Median Age: 2019 American Communities Survey (ACS)
 
--   Bike Racks (Number): Open Street Maps, amenity=bicycle_parking
-
-Due to complications with our OSM data, our instructor recommended we continue with the assignment with solely ACS data, and return to our research question at a later date.
+-   Bikeways (Feet): LA City GeoHub
 
 # Load Data
 
@@ -71,6 +69,7 @@ library(tmap)
 library(rmapshaper)
 library(zonebuilder)
 library(ggspatial)
+library(dplyr)
 ```
 
 ```{r, message=FALSE, results='hide', warning=FALSE}
@@ -92,7 +91,6 @@ la_city_limits <- places("California") %>%
 
 city_boundary <- city_boundary[la_city_limits,]
 ```
-
 The below data is considered joined because we sourced it all at the same geography from the same source. There was no need to join the data, but the data did produce 1001 observations of 17 variables.
 
 ```{r, message=FALSE, results='hide', warning=FALSE}
@@ -119,6 +117,23 @@ acs_la_tracts_new
 acs_la_tracts_new$binary_white <- ifelse(acs_la_tracts_new$percent_white > 0.521, "white", "non_white")
 ```
 
+```{r}
+bikeways <- st_read("networks/census_tracts_including_bikeways/census_tracts_including_bikeways.shp")
+bikeways$CT20 <- paste("06037", bikeways$CT20, sep = "", collapse = NULL)
+bikeways <- rename(bikeways, GEOID = CT20)
+```
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+acs_la_tracts_new2 <- acs_la_tracts_new                              
+acs_la_tracts_new2$percent_res_new <- acs_la_tracts_new$res_new_E/acs_la_tracts$pop_E
+acs_la_tracts_new2 
+```
+
+```{r}
+
+bikeways2 <- inner_join(bikeways %>% as.data.frame(), acs_la_tracts_new2 %>% as.data.frame(), by = "GEOID")
+```
+
 # Descriptive Statistics
 
 ## Continuous Variables
@@ -127,11 +142,11 @@ The continuous variables our group used are median income, mode of transportatio
 
 Calculations
 
-```{r, message=FALSE, results='hide', warning=FALSE}
+```{r message=FALSE, warning=FALSE, results='hide'}
 inc_t_test <- t.test(acs_la_tracts_new$med_income_E)
 transport_t_test <- t.test(acs_la_tracts_new$transport_E)
 age_t_test <-t.test(acs_la_tracts_new$med_age_E)
-
+bikeways_t_test <- t.test(bikeways2$sum_Length)
 ```
 
 ### Median and interquartile range
@@ -140,6 +155,7 @@ age_t_test <-t.test(acs_la_tracts_new$med_age_E)
 inc_quartiles <- quantile(acs_la_tracts_new$med_income_E, na.rm = TRUE)
 transport_quartiles <- quantile(acs_la_tracts_new$transport_E, na.rm = TRUE)
 age_quartiles <- quantile(acs_la_tracts_new$med_age_E, na.rm = TRUE)
+bikeways_quartiles <- quantile(bikeways2$sum_Length, na.rm = TRUE)
 
 ```
 
@@ -149,6 +165,7 @@ age_quartiles <- quantile(acs_la_tracts_new$med_age_E, na.rm = TRUE)
 inc_st_dev <- sd(acs_la_tracts_new$med_income_E, na.rm = TRUE)
 transport_st_dev <- sd(acs_la_tracts_new$transport_E, na.rm = TRUE)
 age_st_dev <- sd(acs_la_tracts_new$med_age_E, na.rm = TRUE)
+bikeways_st_dev <- sd(bikeways2$sum_Length, na.rm = TRUE)
 
 ```
 
@@ -167,31 +184,36 @@ age_hist <- ggplot(acs_la_tracts_new) +
   geom_histogram(aes(x = med_age_E),
                  bins = 30)
 
+bikeways_hist <- ggplot(bikeways2) +
+  geom_histogram(aes(x = sum_Length),
+                 bins = 30)
+
 inc_hist
 transport_hist
 age_hist
+bikeways_hist
 ```
 
 ### Displaying our results
 
 ```{r, message=FALSE, warning=FALSE}
 cont_summary <- tibble(
-  Variable = c("Median Income", 
-               "Transport (Bike)", "Median Age"),
+  Variable = c("Median Income ($)", 
+               "Transport (People)", "Median Age (Years)", "Bikeways (Feet)"),
   `Sample mean` = c(inc_t_test$estimate,
-                    transport_t_test$estimate, age_t_test$estimate * 1000),
+                    transport_t_test$estimate, age_t_test$estimate, bikeways_t_test$estimate * 1000),
   `Population mean (95% confidence) - low` = 
     c(inc_t_test$conf.int[1],
-      transport_t_test$conf.int[1], age_t_test$conf.int[1] * 1000),
+      transport_t_test$conf.int[1], age_t_test$conf.int[1], bikeways_t_test$conf.int[1] * 1000),
   `Population mean (95% confidence) - high` =
     c(inc_t_test$conf.int[2],
-      transport_t_test$conf.int[2], age_t_test$conf.int[2] * 1000),
+      transport_t_test$conf.int[2], age_t_test$conf.int[2], bikeways_t_test$conf.int[2] * 1000),
   Median = c(inc_quartiles[3],
-             transport_quartiles[3], age_quartiles[3] * 1000),
+             transport_quartiles[3], age_quartiles[3], bikeways_quartiles[3] * 1000),
   `Interquartile range` = c(inc_quartiles[4] - inc_quartiles[2],
-                            transport_quartiles[4] - transport_quartiles[2], age_quartiles[4] - age_quartiles[2] * 1000),
+                            transport_quartiles[4] - transport_quartiles[2], age_quartiles[4] - age_quartiles[2], bikeways_quartiles[4] - bikeways_quartiles[2] * 1000),
   `Standard deviation` = c(inc_st_dev,
-                          transport_st_dev, age_st_dev * 1000))
+                          transport_st_dev, age_st_dev, bikeways_st_dev * 1000))
 
 kable(cont_summary, digits = 0)
 ```
@@ -203,14 +225,9 @@ Our two categorical variables are % white and new residents, to measure gentrifi
 ```{r, message=FALSE, warning=FALSE}
 pct_white_maj <- t.test(acs_la_tracts_new$binary_white == "white")
 
-pct_white_min <- t.test(acs_la_tracts_new$binary_white == "non-white")
+pct_white_min <- t.test(acs_la_tracts_new$binary_white == "non_white")
 ```
 
-```{r, message=FALSE, results='hide', warning=FALSE}
-acs_la_tracts_new2 <- acs_la_tracts_new                              
-acs_la_tracts_new2$percent_res_new <- acs_la_tracts_new$res_new_E/acs_la_tracts$pop_E
-acs_la_tracts_new2 
-```
 
 ```{r, message=FALSE, results='hide', warning=FALSE}
 res_t_test <- t.test(acs_la_tracts_new2$percent_res_new)
@@ -268,92 +285,88 @@ ggplot(la_tract_summary) +
   theme_bw()
 ```
 
-### Bar Chart for Tenure
+# ASSIGNMENT 3 Bivariate Analysis
 
-```{r, message=FALSE, warning=FALSE}
-ggplot(la_tract_summary) +
-  geom_bar(aes(x = `Race in Census Tracts`, 
-               y = `Sample proportion`),
-           stat = "identity") +
-  geom_errorbar(aes(x = `Race in Census Tracts`, 
-               y = `Sample proportion`,
-               ymin = `95-percent confidence - low`,
-               ymax = `95-percent confidence - high`),
-           stat = "identity") +
-  scale_y_continuous(name = "Number of Tracts",
-                     breaks = c(0, 20, 40, 60, 80),
-                     labels = c("0", "20", "40", "60", "80")) +
-  theme_bw()
-```
-
-# ASSIGNMENT 3
-
-Running correlation test between continuous variables. Until we get our bike data finalized, we will assume income is our dependant variable.
-
+Running correlation test between continuous variables. Our bikeway length data was successfully clipped in ArcGIS Pro and we were then able to calculate the number of linear feet of bikeways per census tract (Thank you Jonathan), this created a final tally of 889 observations.
+ 
 ```{r}
-cor.test(~ med_income_E + med_age_E, data = acs_la_tracts_new2)
-
+cor.test(~ bikeways2$sum_Length + bikeways2$med_income_E)
 ```
-In running a bivariate analysis between these two continious variables, our 95% confidence interval does not include zero, and all valuables are positive. This leads us to conclude, with 95% confidence, that the higher median ages as associated with higher levels of income. 
+In running a bivariate analysis between these two continuous variables, our 95% confidence interval does not include zero, and all values are positive. The correlation coefficient leads us to conclude, with 95% confidence, that there is a weak positive relationship between length of bike lanes and median income per census tract. 
 
 Below we try the same method, but with a regression.
 
 ```{r}
-age_model <- lm(med_income_E ~ med_age_E, data = acs_la_tracts_new2)
-summary(age_model)
+bike_income_model <- lm(sum_Length ~ med_income_E, data = bikeways2)
+summary(bike_income_model)
 ```
-Our p value here is 2e-16 rather than 2.23-16 (something we may want to clarify with the TAs or Carole), but also need to confirm if the R squared value of .3278 indeed the square of .573.
+Our p value here is the same as above and the R-Squared value of 0.008491 is the square value of the correlation coefficient 0.09214392.
 
 ## Density 
 
-We also choose to run an alaysis of median income with population density, to see if areas of higher income have less people living in that census tract. 
+We also choose to run an analysis of bikeway length and population density, to see if areas with more bike lanes have fewer people living in that census tract. 
 
 ```{r}
-cor.test(~ med_income_E + pop_E, data = acs_la_tracts_new2)
+cor.test(~ sum_Length + pop_E, data = bikeways2)
 
 ```
-The P value does not equal zero, and the 95% confidence interval is all negative values. With the correlation coefficient being negative, we could say with 95% confidence that as the median income of a census tract does increase, the population of the census track decreases. 
+
+Since the confidence interval includes zero, we cannot say with 95% certainty that bikeway length is associated with population density, however we still find this to be helpful to our research in acknowledging that bikelane length amount neither has a strong negative or positive correlation (with 95% certainty) with population density. 
 
 ```{r}
-dens_model <- lm( med_income_E ~ pop_E, data = acs_la_tracts_new2)
+dens_model <- lm(sum_Length ~ pop_E, data = bikeways2)
 summary(dens_model)
 ```
 The adjusted R-Squared in the above does match the correlation co-efficient in the above code. 
 
-# Difference in the mean of Categorical Variables 
+# Difference in the mean of categorical variables 
 
-Until we can get our bike lane data clipped in ArcGis, we are presently curious in assessing if LA City tracks that are catorigized as white majority have higher levels of income than non-white majority tracts.
+We successfully clipped our bike lane length in ArcGIS and calculated the number of bike lanes in feet per census tract. we are presently curious in assessing if LA City tracks that are categorized as white majority have higher amounts of bike lanes than non-white majority tracts.
 
 ```{r}
-t.test(med_income_E ~ binary_white, data = acs_la_tracts_new2)
+t.test(sum_Length ~ binary_white, data = bikeways2)
 
 ```
-In the above t-test, the 95% confidence interval is a very high negative number range that does not cross zero, and the p value is very small, indicating a strong correlation. We can say, with 95% confidence, that the mean median income in the group of non-white census tracts if 24,756.54 USD and the mean median income estimate in the group of white majority census tracts is 41,965.89 USD. This is a start confidence 
+In the above t-test, the 95% confidence interval is a very high negative number range that does not cross zero, and the p value is very small, indicating a strong correlation. We can say, with 95% confidence, that the mean bike lane length in the group of non-white census tracts is 2790.904 feet and the mean in white majority census tracts is 3585.035 feet. This is a stark contrast. 
 
 We can run the same result as a regression 
 
 ```{r}
-race_income_model <- lm(med_income_E ~ binary_white, data = acs_la_tracts_new2)
+bike_race_model <- lm(sum_Length ~ binary_white, data = bikeways2)
 
-summary(race_income_model)
+summary(bike_race_model)
 ```
-The adjusted R squared in the linear regression does match the correlation coefficient in the above. 
+The adjusted R squared in the linear regression does match the square of the correlation coefficient in the above. 
 
-## Effect of Race on median income
+## Effect of race on bike lane length
+We are running a linear regression to see if all white majority census tracts have more length of bike lanes than non-majority white census tracts. 
 
-Where we are having issues!!! WE can also use regression to find the effect of race (% white) on income or try to access the other cateorical variable of % residnets new, but we need to further categorize that. 
+```{r}
 
-
-data <- data %>%
+bikeways3 <- bikeways2 %>%
   mutate(binary_white = as.factor(binary_white)) %>%
-  mutate(binary_white = relevel(binary_white, "white"))
+  mutate(binary_white = relevel(binary_white, "non_white"))
 
-binary_white_model <- lm(med_income_E ~ binary_white, acs_la_tracts_new2)
+binary_white_model <- lm(sum_Length ~ binary_white, data = bikeways3)
 
 summary(binary_white_model)
 ```
 
-# References
+The above regression is helpful in determining if all white majority bike lane lengths are greater than those of non white majority tracts, however this analysis would be most useful if we had greater than 2 categories in our categorical variable to compare to (ex. white majority of greater than 50%, white population of 30%, white population of 15%, etc.) This may be something we want to explore more in the future. 
+
+# Assignment 4: Multivariate Analysis
+
+```{r}
+full_model <- lm(sum_Length ~ percent_res_new + binary_white + pop_E + med_income_E + transport_E, bikeways3)
+
+summary(full_model)
+```
+
+In our multivariate regression, we found that the only independent variable with a statistically significant confidence interval (95%) was binary_white, a categorical variable which refers to white majority census tracts. In other words, controlling for tenure, population, median income, and transport mode, we still found white majority census tracts to have a positive correlation with the number of feet of bike lane in a census tract. This means that majority white census tracts have 1408.03 more feet of bike lane than census tracts that are non-white majority.
+
+On the other hand, our bivariate regression with binary_white (majority, non-majority census tract population) and sum_length (length of bike lane per census tract) found a stronger positive relationship with a higher level of confidence. When controlling for other variables, we found that relationship to be weaker. This relationship is still significant at 95% confidence, but previously was a 99% confidence. 
+
+#References
 
 -   Blame it on the bike: Does cycling contribute to a city's gentrification? \| Cities \| The Guardian. (n.d.). Retrieved October 25, 2021, from <https://www.theguardian.com/cities/2016/oct/05/blame-bike-cycling-contribute-city-gentrification>
 
