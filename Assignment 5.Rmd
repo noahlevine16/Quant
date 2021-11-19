@@ -50,7 +50,9 @@ The number of individuals identifying as white alone is initially a continuous v
 
 -   Median Age: 2019 American Communities Survey (ACS)
 
--   Bikeways (Feet): LA City GeoHub
+-   Bikeways (Feet): LA City GeoHub*
+
+*Includes Lane (69.98%), Protected Bike Lane (2.38%), Buffer Bike Lane (1.08%), and Path (0.75%. Excludes Sharrowed Route (14.48%), Route (11.04%), Bicycle Friendly Street (0.17%), Temp Removal Sharrowed Route (0.08%), and Detour Sharrowed Route (0.03%).
 
 # Load Data
 
@@ -122,11 +124,15 @@ acs_la_tracts_new
 acs_la_tracts_new$binary_white <- ifelse(acs_la_tracts_new$percent_white > 0.521, "white", "non_white")
 ```
 
+Bikeways
+
 ```{r}
-bikeways <- st_read("networks/census_tracts_including_bikeways/census_tracts_including_bikeways.shp")
+bikeways <- st_read("networks/census_tracts_including_bikeways2/census_tracts_LA_city_2020_SummarizeWithin.shp")
 bikeways$CT20 <- paste("06037", bikeways$CT20, sep = "", collapse = NULL)
 bikeways <- rename(bikeways, GEOID = CT20)
 ```
+
+Percent of new residents
 
 ```{r, message=FALSE, results='hide', warning=FALSE}
 acs_la_tracts_new2 <- acs_la_tracts_new                              
@@ -139,7 +145,6 @@ acs_la_tracts_new2
 bikeways2 <- inner_join(bikeways %>% as.data.frame(), acs_la_tracts_new2 %>% as.data.frame(), by = "GEOID")
 ```
 
-
 ```{r}
 tract_areas <- tracts(state = "CA", county = "Los Angeles") %>% 
      st_drop_geometry() %>% 
@@ -148,7 +153,6 @@ tract_areas <- tracts(state = "CA", county = "Los Angeles") %>%
 ```
 
 ```{r}
-
 bikeways3 <- inner_join(bikeways2 %>% as.data.frame(), tract_areas %>% as.data.frame(), by = "GEOID")
 ```
 
@@ -369,7 +373,7 @@ We are running a linear regression to see if all white majority census tracts ha
 
 ```{r}
 
-bikeways3 <- bikeways2 %>%
+bikeways3 <- bikeways3 %>%
   mutate(binary_white = as.factor(binary_white)) %>%
   mutate(binary_white = relevel(binary_white, "non_white"))
 
@@ -403,18 +407,19 @@ Prior to starting assignment 5, we wanted to tidy up our previous data and add a
 
 Then with our new variables, pop_density and percent_bike, we decided to run a new multivariate analysis (full_model2), which yielded a statistically significant negative correlation of pop density and bike lane length. Every additional linear foot of bike lane, the average census tract looses .085 people per square mile. The R squared explains 8.6% variation in sum length while our old R-square showed 2.1 % variation in sum length, so our new model is a better fit.
 
+
 ```{r}
 full_model2 <- lm(sum_Length ~ percent_res_new + binary_white + pop_density + med_income_E + percent_bike, bikeways3)
 
 summary(full_model2)
 ```
 
-Based on our variables, we believe the non-linear transformation is the better fit for our data, because we want to analysis the % change in our variables rather than a fixed increase/decrease This statistical significance  of pop_density to bike lane length inspired us to run log2, which runs the logarithmic but also doubles it so as to hopefully make it more readable
-
-
 ```{r}
 bikeways3$log_pop_density <- log(bikeways3$pop_density)
 ```
+
+Based on our variables, we believe the non-linear transformation is the better fit for our data, because we want to analysis the % change in our variables rather than a fixed increase/decrease This statistical significance  of pop_density to bike lane length inspired us to run log2, which runs the logarithmic but also doubles it so as to hopefully make it more readable
+
 
 ```{r}
 full_model3 <- lm(sum_Length ~ percent_res_new + binary_white + log_pop_density + med_income_E + percent_bike, bikeways3)
