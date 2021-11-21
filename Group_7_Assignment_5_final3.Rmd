@@ -1,0 +1,471 @@
+---
+title: "Quant_Group_7"
+author: "E.Sheild_N.Levine_G.Barrett-Jackson"
+date: "11/18/21"
+output: 
+  html_document:
+    theme: readable
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+options(scipen = 999)
+```
+
+# Research Question
+
+What is the relationship between the installation of bicycle facilities and gentrification in the City of Los Angeles?
+
+# Prior Research
+
+Exploring the relationship between the installation of bicycle facilities and socioeconomic and demographic changes in 29 US cities, Ferenchak and Wesley (2021) find "weak and largely non-significant" relationships of causality. Focusing on Portland, OR and Chicago, IL, Flanagan et al. (2016) "identify a bias towards increased cycling infrastructure investment in areas of existing or increasing privilege." Following Davis (2021), we conceptualize gentrification in terms of growth in the white population as well as increase in median household income.Our hope over the course of the module is to continue identifying gaps in that research that can better refine our own approach to contribute to the broader research body of social determinants of bicycle infrastructure and ridership.
+
+## Current News Articles
+
+Our group also sought to explore current news articles related to this research area. They can be found in the bibliography.
+
+# Data
+
+The sample population for this study is the all census tracts in the City of Los Angeles. The analysis will include the following categorical and continuous variables:
+
+## Categorical Variables
+
+-   Tenure: 2019 American Communities Survey (ACS) "Did this person live in this house or apartment 5 years ago?"
+
+-   Race (White): 2019 American Communities Survey (ACS) "What is Person 1's race?"
+
+ACS Defines "White. A person having origins in any of the original peoples of Europe, the Middle East, or North Africa. It includes people who indicate their race as "White" or report entries such as Irish, German, Italian, Lebanese, Arab, Moroccan, or Caucasian."
+
+The number of individuals identifying as white alone is initially a continuous variable, so we created a new column in our data for the total population within that census tract and converted each figure into a percentage. The average white alone population in the City of LA is 52.1%, so we then categorized the data into tracts with over 52.1% white (labeled as white) and tracts under 52.1% white (labeled as non-white). The categorical variable is now defined as binary_white.
+
+## Continious Variables
+
+-   Median Income: 2019 American Communities Survey (ACS) "What was this person's total income during the past 12 months?"
+
+-   Means of Transportation (Bike): 2019 American Communities Survey (ACS) "How did this person usually get to work last week?"
+
+-   Median Age: 2019 American Communities Survey (ACS)
+
+-   Bikeways (Feet): LA City GeoHub*
+
+*Includes Lane (69.98%), Protected Bike Lane (2.38%), Buffer Bike Lane (1.08%), and Path (0.75%. Excludes Sharrowed Route (14.48%), Route (11.04%), Bicycle Friendly Street (0.17%), Temp Removal Sharrowed Route (0.08%), and Detour Sharrowed Route (0.03%).
+
+# Load Data
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+library(tidyverse)
+library(tigris)
+library(tidycensus)
+library(readxl)
+library(knitr)
+library(sf)
+library(tidyverse)
+library(ggthemes)
+library(units)
+library(nngeo)
+library(osmextract)
+library(tidygeocoder)
+library(tmap)
+library(rmapshaper)
+library(zonebuilder)
+library(ggspatial)
+library(dplyr)
+library(gridExtra)
+library(jtools)
+library(huxtable)
+```
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+dir.create("networks")
+
+LA_file <- oe_match("Los Angeles")
+```
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+city_boundary <- st_read("networks/City_Boundary.geojson") 
+```
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+CA5_state_plane <- "+proj=lcc +lat_1=34.03333333333333 +lat_2=35.46666666666667 +lat_0=33.5 +lon_0=-118 +x_0=2000000 +y_0=500000 +ellps=GRS80 +units=m +no_defs"
+
+la_city_limits <- places("California") %>%
+   filter(NAME == "Los Angeles") %>%
+   st_transform(crs = st_crs(city_boundary))
+
+city_boundary <- city_boundary[la_city_limits,]
+```
+The below data is considered joined because we sourced it all at the same geography from the same source. There was no need to join the data, but the data did produce 1001 observations of 17 variables.
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+
+acs_all <- get_acs(geography = "tract", year = 2019, state = "CA", county = "Los Angeles", variables = c(white_ = "B02001_002", med_income_ = "B21004_001", res_new_ = "B07001_049", transport_ = "B08301_018", pop_ = "B01003_001", med_age_ = "B01002_001"), output = "wide", geometry = TRUE)
+
+pl <- places(state = "CA", cb = TRUE)
+
+la.city <- filter(pl, NAME == "Los Angeles")
+
+acs_la_tracts <- ms_clip(target = acs_all, clip = la.city, remove_slivers = TRUE)
+
+```
+
+Percent white
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+acs_la_tracts_new <- acs_la_tracts                              
+acs_la_tracts_new$percent_white <- acs_la_tracts$white_E/acs_la_tracts$pop_E
+acs_la_tracts_new 
+```
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+acs_la_tracts_new$binary_white <- ifelse(acs_la_tracts_new$percent_white > 0.521, "white", "non_white")
+```
+
+Bikeways
+
+```{r}
+bikeways <- st_read("networks/census_tracts_including_bikeways2/census_tracts_LA_city_2020_SummarizeWithin.shp")
+bikeways$CT20 <- paste("06037", bikeways$CT20, sep = "", collapse = NULL)
+bikeways <- rename(bikeways, GEOID = CT20)
+```
+
+Percent of new residents
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+acs_la_tracts_new2 <- acs_la_tracts_new                              
+acs_la_tracts_new2$percent_res_new <- acs_la_tracts_new$res_new_E/acs_la_tracts$pop_E
+acs_la_tracts_new2 
+```
+
+```{r}
+
+bikeways2 <- inner_join(bikeways %>% as.data.frame(), acs_la_tracts_new2 %>% as.data.frame(), by = "GEOID")
+```
+
+```{r}
+tract_areas <- tracts(state = "CA", county = "Los Angeles") %>% 
+     st_drop_geometry() %>% 
+     select(GEOID, ALAND) %>%
+     mutate(area_sq_miles = ALAND / 2589988.11)
+```
+
+```{r}
+bikeways3 <- inner_join(bikeways2 %>% as.data.frame(), tract_areas %>% as.data.frame(), by = "GEOID")
+```
+
+```{r}
+bikeways3$pop_density <- bikeways3$pop_E / bikeways3$area_sq_miles
+```
+
+```{r}
+bikeways3$percent_bike <- bikeways3$transport_E / bikeways3$pop_E
+```
+
+# Descriptive Statistics
+
+## Continuous Variables
+
+The continuous variables our group used are median income, mode of transportation to work, and median age.
+
+Calculations
+
+```{r message=FALSE, warning=FALSE, results='hide'}
+inc_t_test <- t.test(acs_la_tracts_new$med_income_E)
+transport_t_test <- t.test(acs_la_tracts_new$transport_E)
+age_t_test <-t.test(acs_la_tracts_new$med_age_E)
+bikeways_t_test <- t.test(bikeways2$sum_Length)
+```
+
+### Median and interquartile range
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+inc_quartiles <- quantile(acs_la_tracts_new$med_income_E, na.rm = TRUE)
+transport_quartiles <- quantile(acs_la_tracts_new$transport_E, na.rm = TRUE)
+age_quartiles <- quantile(acs_la_tracts_new$med_age_E, na.rm = TRUE)
+bikeways_quartiles <- quantile(bikeways2$sum_Length, na.rm = TRUE)
+
+```
+
+### Get standard deviation
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+inc_st_dev <- sd(acs_la_tracts_new$med_income_E, na.rm = TRUE)
+transport_st_dev <- sd(acs_la_tracts_new$transport_E, na.rm = TRUE)
+age_st_dev <- sd(acs_la_tracts_new$med_age_E, na.rm = TRUE)
+bikeways_st_dev <- sd(bikeways2$sum_Length, na.rm = TRUE)
+
+```
+
+### Displaying a histogram
+
+```{r, message=FALSE, warning=FALSE}
+inc_hist <- ggplot(acs_la_tracts_new) +
+  geom_histogram(aes(x = med_income_E),
+                 bins = 30)
+
+transport_hist <- ggplot(acs_la_tracts_new) +
+  geom_histogram(aes(x = transport_E),
+                 bins = 30)
+
+age_hist <- ggplot(acs_la_tracts_new) +
+  geom_histogram(aes(x = med_age_E),
+                 bins = 30)
+
+bikeways_hist <- ggplot(bikeways2) +
+  geom_histogram(aes(x = sum_Length),
+                 bins = 30)
+
+inc_hist
+transport_hist
+age_hist
+bikeways_hist
+```
+
+### Displaying our results
+
+```{r, message=FALSE, warning=FALSE}
+cont_summary <- tibble(
+  Variable = c("Median Income ($)", 
+               "Transport (People)", "Median Age (Years)", "Bikeways (Feet)"),
+  `Sample mean` = c(inc_t_test$estimate,
+                    transport_t_test$estimate, age_t_test$estimate, bikeways_t_test$estimate * 1000),
+  `Population mean (95% confidence) - low` = 
+    c(inc_t_test$conf.int[1],
+      transport_t_test$conf.int[1], age_t_test$conf.int[1], bikeways_t_test$conf.int[1] * 1000),
+  `Population mean (95% confidence) - high` =
+    c(inc_t_test$conf.int[2],
+      transport_t_test$conf.int[2], age_t_test$conf.int[2], bikeways_t_test$conf.int[2] * 1000),
+  Median = c(inc_quartiles[3],
+             transport_quartiles[3], age_quartiles[3], bikeways_quartiles[3] * 1000),
+  `Interquartile range` = c(inc_quartiles[4] - inc_quartiles[2],
+                            transport_quartiles[4] - transport_quartiles[2], age_quartiles[4] - age_quartiles[2], bikeways_quartiles[4] - bikeways_quartiles[2] * 1000),
+  `Standard deviation` = c(inc_st_dev,
+                          transport_st_dev, age_st_dev, bikeways_st_dev * 1000))
+
+kable(cont_summary, digits = 0)
+```
+
+## Categorical Variables
+
+Our two categorical variables are % white and new residents, to measure gentrification and tenure.
+
+```{r, message=FALSE, warning=FALSE}
+pct_white_maj <- t.test(acs_la_tracts_new$binary_white == "white")
+
+pct_white_min <- t.test(acs_la_tracts_new$binary_white == "non_white")
+```
+
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+res_t_test <- t.test(acs_la_tracts_new2$percent_res_new)
+```
+
+### Formatted table for white population
+
+```{r, message=FALSE, warning=FALSE}
+la_tract_summary <- tibble(`Race in Census Tracts` = 
+                              c("white_maj",
+                                "white_min"),
+                            `Sample proportion` = 
+                              c(pct_white_maj$estimate * 100,
+                                pct_white_min$estimate *100),
+                            `95-percent confidence - low` = 
+                              c(pct_white_maj$conf.int[1] * 100,
+                                pct_white_min$conf.int[1] * 100),
+                            `95-percent confidence - high` = 
+                              c(pct_white_maj$conf.int[2] * 100,
+                                pct_white_min$conf.int[2] * 100))
+
+kable(la_tract_summary, digits = 0)
+```
+
+### Formatted table for Tenure
+
+```{r, message=FALSE, warning=FALSE}
+la_tract_tenure <- tibble(`Tenure in Census Tracts` = 
+                              c("New Residents"),
+                            `Sample proportion` = 
+                              c(res_t_test$estimate * 100),
+                            `95-percent confidence - low` = 
+                              c(res_t_test$conf.int[1] * 100),
+                            `95-percent confidence - high` = 
+                              c(res_t_test$conf.int[2] * 100))
+
+kable(la_tract_tenure)
+```
+
+### Bar Chart % white
+
+```{r, message=FALSE, warning=FALSE}
+ggplot(la_tract_summary) +
+  geom_bar(aes(x = `Race in Census Tracts`, 
+               y = `Sample proportion`),
+           stat = "identity") +
+  geom_errorbar(aes(x = `Race in Census Tracts`, 
+               y = `Sample proportion`,
+               ymin = `95-percent confidence - low`,
+               ymax = `95-percent confidence - high`),
+           stat = "identity") +
+  scale_y_continuous(name = "Number of Tracts",
+                     breaks = c(0, 20, 40, 60, 80),
+                     labels = c("0", "20", "40", "60", "80")) +
+  theme_bw()
+```
+
+# Assignment 3: Bivariate Analysis
+
+Running correlation test between continuous variables. Our bikeway length data was successfully clipped in ArcGIS Pro and we were then able to calculate the number of linear feet of bikeways per census tract (Thank you Jonathan), this created a final tally of 889 observations.
+ 
+```{r}
+cor.test(~ bikeways2$sum_Length + bikeways2$med_income_E)
+```
+In running a bivariate analysis between these two continuous variables, our 95% confidence interval does not include zero, and all values are positive. The correlation coefficient leads us to conclude, with 95% confidence, that there is a weak positive relationship between length of bike lanes and median income per census tract. 
+
+Below we try the same method, but with a regression.
+
+```{r}
+bike_income_model <- lm(sum_Length ~ med_income_E, data = bikeways2)
+summary(bike_income_model)
+```
+Our p value here is the same as above and the R-Squared value of 0.008491 is the square value of the correlation coefficient 0.09214392.
+
+## Density 
+
+We also choose to run an analysis of bikeway length and population density, to see if areas with more bike lanes have fewer people living in that census tract. 
+
+```{r}
+cor.test(~ sum_Length + pop_E, data = bikeways2)
+
+```
+
+Since the confidence interval includes zero, we cannot say with 95% certainty that bikeway length is associated with population density, however we still find this to be helpful to our research in acknowledging that bikelane length amount neither has a strong negative or positive correlation (with 95% certainty) with population density. 
+
+```{r}
+dens_model <- lm(sum_Length ~ pop_E, data = bikeways2)
+summary(dens_model)
+```
+The adjusted R-Squared in the above does match the correlation co-efficient in the above code. 
+
+# Difference in the mean of categorical variables 
+
+We successfully clipped our bike lane length in ArcGIS and calculated the number of bike lanes in feet per census tract. we are presently curious in assessing if LA City tracks that are categorized as white majority have higher amounts of bike lanes than non-white majority tracts.
+
+```{r}
+t.test(sum_Length ~ binary_white, data = bikeways2)
+
+```
+In the above t-test, the 95% confidence interval is a very high negative number range that does not cross zero, and the p value is very small, indicating a strong correlation. We can say, with 95% confidence, that the mean bike lane length in the group of non-white census tracts is 2790.904 feet and the mean in white majority census tracts is 3585.035 feet. This is a stark contrast. 
+
+We can run the same result as a regression 
+
+```{r}
+bike_race_model <- lm(sum_Length ~ binary_white, data = bikeways2)
+
+summary(bike_race_model)
+```
+The adjusted R squared in the linear regression does match the square of the correlation coefficient in the above. 
+
+## Effect of race on bike lane length
+We are running a linear regression to see if all white majority census tracts have more length of bike lanes than non-majority white census tracts. 
+
+```{r}
+
+bikeways3 <- bikeways3 %>%
+  mutate(binary_white = as.factor(binary_white)) %>%
+  mutate(binary_white = relevel(binary_white, "non_white"))
+
+binary_white_model <- lm(sum_Length ~ binary_white, data = bikeways3)
+
+summary(binary_white_model)
+```
+
+The above regression is helpful in determining if all white majority bike lane lengths are greater than those of non white majority tracts, however this analysis would be most useful if we had greater than 2 categories in our categorical variable to compare to (ex. white majority of greater than 50%, white population of 30%, white population of 15%, etc.) This may be something we want to explore more in the future. 
+
+# Assignment 4: Multivariate Analysis
+
+```{r}
+full_model <- lm(sum_Length ~ percent_res_new + binary_white + pop_E + med_income_E + transport_E, bikeways3)
+
+summary(full_model)
+```
+
+
+In our bivariate regression with binary_whitewhite (white majority census tracts) and sum_Length (feet of bike lane per census tract), we found, on average, that white majority census tracts in Los Angeles have 794.1 more feet of bike lane than non-white majority census tracts. This finding was significant at the 99% confidence level. With a p-value of 0.00962, the likelihood of getting the same result by chance was 0.962% 
+
+However, in our multivariate regression with tenure, population, median income, and transport mode (bicycle), the coefficient for binary_whitewhite dropped to 718.4 feet. In other words, controlling for tenure, population, median income, and transport mode (bicycle), we still found that white majority census tracts were positively correlated with the number of feet of bike lane per census tract, but with a slightly smaller coefficient and at a lower confidence level of 95%. With a p-value of 0.0256, the likelihood of getting the same result by chance was 2.56%. None of the other variables in our regression met the 95% confidence level, which is the standard for the social sciences. 
+
+In our multivariate regression, we also noted a small, positive relationship between sum_Length and population of 0.225535 feet. That is to say, each additional person is associated with 0.225535 more feet of bike lane per census tract. This finding was significant at the 90% confidence level. With a p-value of 0.0686, the likelihood of getting the same result by chance was 6.86%. 
+
+Overall, based on an r-squared value of 0.02138, our model explains approximately 2.14% of the variation in bike lane length per census tract in Los Angeles.   
+
+# Assignment 5: Transformations
+
+Prior to starting Assignment 5, we wanted to tidy up our previous data and add new variables to explore. We also clarified use of  a more restrictive definition of bikeway infrastructure, which  excludes sharrows and other infrastructure that is not a seperated bike lane from vehicular traffic.  
+
+## Rerun multivariate analysis
+
+Then with our new variables, pop_density and percent_bike, we decided to run a new multivariate analysis (full_model2), which yielded a statistically significant negative correlation of pop density and bike lane length. For every additional linear foot of bike lane, the average census tract "loses" .085 people per square mile. The R-squared explains 8.6% of the variation in sum length while our old R-squared (full_model, without the new variables) explains 2.1% of the variation in sum length, so our new model is a better fit.
+
+```{r}
+full_model2 <- lm(sum_Length ~ percent_res_new + binary_white + pop_density + med_income_E + percent_bike, bikeways3)
+
+summary(full_model2)
+```
+## Non-linear Transformation: Base-two Logarithm
+
+We believe the non-linear transformation is a better fit for our data, because we want to analyze the % change in our variables rather than the actual value of a fixed increase/decrease. The statistical significance of pop_density to bike lane length inspired us to run log2. With a base-two log, our interpretation of the coefficient will be the effect of doubling the population density.
+
+```{r}
+bikeways3$log_pop_density <- log(bikeways3$pop_density)
+```
+
+```{r}
+full_model3 <- lm(sum_Length ~ percent_res_new + binary_white + log_pop_density + med_income_E + percent_bike, bikeways3)
+
+summary(full_model3)
+```
+
+We used the below code to transform the above data into a cleaner table. 
+ 
+```{r}
+coeff_names_scaled <- c("Constant" = "(Intercept)",
+                 "New residents (%)" = "percent_res_new",
+                 "Majority white (binary)" = "binary_whitewhite",
+                 "Log population density (people/sqmi)" = "log_pop_density",
+                 "Median income ($)" = "med_income_E",
+                 "Bike commuters (%)" = "percent_bike")
+
+export_summs(full_model2, full_model3,
+             error_format = "(p = {p.value})",
+             error_pos = "same",
+             model.names = c("Initial", 
+                             "Logged"),
+             coefs = coeff_names_scaled)
+```
+
+After we log transformed population density and re-ran the regression, log_pop_density retained its significance and med_income_E also became statistically significant. The R-squared value tells how much of the variation in the dependent variable is due to the other independent variables. Our R-squared is .1779 for the log transformation, which is up from .086. This means that our model now explains 17.79% of the variation in the dependent variable (rounded to 18% in the cleaner table).
+
+Overall, we argue that the non-linear transformation, using a base-two log, is in fact a better predictor of change and does make our data easier to interpret.
+ 
+# References
+
+-   Blame it on the bike: Does cycling contribute to a city's gentrification? \| Cities \| The Guardian. (n.d.). Retrieved October 25, 2021, from <https://www.theguardian.com/cities/2016/oct/05/blame-bike-cycling-contribute-city-gentrification>
+
+-   Davis, J. (2021, July 15). The double-edged sword of upzoning. Brookings. <https://www.brookings.edu/blog/how-we-rise/2021/07/15/the-double-edged-sword-of-upzoning/>
+
+-   Ferenchak, N. N., & Marshall, W. E. (2021). Bicycling facility inequalities and the causality dilemma with socioeconomic/sociodemographic change. Transportation Research Part D: Transport and Environment, 97, 102920. <https://doi.org/10.1016/j.trd.2021.102920>
+
+-   Flanagan, E., Lachapelle, U., & El-Geneidy, A. (2016). Riding tandem: Does cycling infrastructure investment mirror gentrification and privilege in Portland, OR and Chicago, IL? Research in Transportation Economics, 60, 14--24. <https://doi.org/10.1016/j.retrec.2016.07.027>
+
+-   LADOT Walk & Bike Count. (n.d.). LADOT. Retrieved October 25, 2021, from <https://ladot.lacity.org/walkbikecount>
+
+-   Radio, S. C. P. (700, 00:44). Watch a decade of growth in LA's bike infrastructure. Southern California Public Radio. <https://archive.kpcc.org/news/2015/04/10/50849/watch-a-decade-of-growth-in-la-s-bike-infrastructu/>
+
+-   What the Latest Census Data Says About L.A. City Bicycle Commuting. (2014, September 23). Streetsblog Los Angeles. <https://la.streetsblog.org/2014/09/23/what-the-latest-census-data-says-about-l-a-city-bicycle-commuting/>
+
+# Thank you
+
+Group 7 would like to thank Prof. Voulgaris and TAs for reviewing our work, and look forward to another semester.
