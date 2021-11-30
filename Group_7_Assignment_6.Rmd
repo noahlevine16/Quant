@@ -12,7 +12,6 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-
 options(scipen = 999)
 ```
 
@@ -77,11 +76,11 @@ library(dplyr)
 library(gridExtra)
 library(jtools)
 library(huxtable)
+library(interactions)
 ```
 
 ```{r, message=FALSE, results='hide', warning=FALSE}
 dir.create("networks")
-
 LA_file <- oe_match("Los Angeles")
 ```
 
@@ -91,25 +90,18 @@ city_boundary <- st_read("networks/City_Boundary.geojson")
 
 ```{r, message=FALSE, results='hide', warning=FALSE}
 CA5_state_plane <- "+proj=lcc +lat_1=34.03333333333333 +lat_2=35.46666666666667 +lat_0=33.5 +lon_0=-118 +x_0=2000000 +y_0=500000 +ellps=GRS80 +units=m +no_defs"
-
 la_city_limits <- places("California") %>%
    filter(NAME == "Los Angeles") %>%
    st_transform(crs = st_crs(city_boundary))
-
 city_boundary <- city_boundary[la_city_limits,]
 ```
 The below data is considered joined because we sourced it all at the same geography from the same source. There was no need to join the data, but the data did produce 1001 observations of 17 variables.
 
 ```{r, message=FALSE, results='hide', warning=FALSE}
-
 acs_all <- get_acs(geography = "tract", year = 2019, state = "CA", county = "Los Angeles", variables = c(white_ = "B02001_002", med_income_ = "B21004_001", res_new_ = "B07001_049", transport_ = "B08301_018", pop_ = "B01003_001", med_age_ = "B01002_001"), output = "wide", geometry = TRUE)
-
 pl <- places(state = "CA", cb = TRUE)
-
 la.city <- filter(pl, NAME == "Los Angeles")
-
 acs_la_tracts <- ms_clip(target = acs_all, clip = la.city, remove_slivers = TRUE)
-
 ```
 
 Percent white
@@ -141,7 +133,6 @@ acs_la_tracts_new2
 ```
 
 ```{r}
-
 bikeways2 <- inner_join(bikeways %>% as.data.frame(), acs_la_tracts_new2 %>% as.data.frame(), by = "GEOID")
 ```
 
@@ -186,7 +177,6 @@ inc_quartiles <- quantile(acs_la_tracts_new$med_income_E, na.rm = TRUE)
 transport_quartiles <- quantile(acs_la_tracts_new$transport_E, na.rm = TRUE)
 age_quartiles <- quantile(acs_la_tracts_new$med_age_E, na.rm = TRUE)
 bikeways_quartiles <- quantile(bikeways2$sum_Length, na.rm = TRUE)
-
 ```
 
 ### Get standard deviation
@@ -196,7 +186,6 @@ inc_st_dev <- sd(acs_la_tracts_new$med_income_E, na.rm = TRUE)
 transport_st_dev <- sd(acs_la_tracts_new$transport_E, na.rm = TRUE)
 age_st_dev <- sd(acs_la_tracts_new$med_age_E, na.rm = TRUE)
 bikeways_st_dev <- sd(bikeways2$sum_Length, na.rm = TRUE)
-
 ```
 
 ### Displaying a histogram
@@ -205,19 +194,15 @@ bikeways_st_dev <- sd(bikeways2$sum_Length, na.rm = TRUE)
 inc_hist <- ggplot(acs_la_tracts_new) +
   geom_histogram(aes(x = med_income_E),
                  bins = 30)
-
 transport_hist <- ggplot(acs_la_tracts_new) +
   geom_histogram(aes(x = transport_E),
                  bins = 30)
-
 age_hist <- ggplot(acs_la_tracts_new) +
   geom_histogram(aes(x = med_age_E),
                  bins = 30)
-
 bikeways_hist <- ggplot(bikeways2) +
   geom_histogram(aes(x = sum_Length),
                  bins = 30)
-
 inc_hist
 transport_hist
 age_hist
@@ -244,7 +229,6 @@ cont_summary <- tibble(
                             transport_quartiles[4] - transport_quartiles[2], age_quartiles[4] - age_quartiles[2], bikeways_quartiles[4] - bikeways_quartiles[2] * 1000),
   `Standard deviation` = c(inc_st_dev,
                           transport_st_dev, age_st_dev, bikeways_st_dev * 1000))
-
 kable(cont_summary, digits = 0)
 ```
 
@@ -254,7 +238,6 @@ Our two categorical variables are % white and new residents, to measure gentrifi
 
 ```{r, message=FALSE, warning=FALSE}
 pct_white_maj <- t.test(acs_la_tracts_new$binary_white == "white")
-
 pct_white_min <- t.test(acs_la_tracts_new$binary_white == "non_white")
 ```
 
@@ -278,7 +261,6 @@ la_tract_summary <- tibble(`Race in Census Tracts` =
                             `95-percent confidence - high` = 
                               c(pct_white_maj$conf.int[2] * 100,
                                 pct_white_min$conf.int[2] * 100))
-
 kable(la_tract_summary, digits = 0)
 ```
 
@@ -293,7 +275,6 @@ la_tract_tenure <- tibble(`Tenure in Census Tracts` =
                               c(res_t_test$conf.int[1] * 100),
                             `95-percent confidence - high` = 
                               c(res_t_test$conf.int[2] * 100))
-
 kable(la_tract_tenure)
 ```
 
@@ -338,7 +319,6 @@ We also choose to run an analysis of bikeway length and population density, to s
 
 ```{r}
 cor.test(~ sum_Length + pop_E, data = bikeways2)
-
 ```
 
 Since the confidence interval includes zero, we cannot say with 95% certainty that bikeway length is associated with population density, however we still find this to be helpful to our research in acknowledging that bikelane length amount neither has a strong negative or positive correlation (with 95% certainty) with population density. 
@@ -355,7 +335,6 @@ We successfully clipped our bike lane length in ArcGIS and calculated the number
 
 ```{r}
 t.test(sum_Length ~ binary_white, data = bikeways2)
-
 ```
 In the above t-test, the 95% confidence interval is a very high negative number range that does not cross zero, and the p value is very small, indicating a strong correlation. We can say, with 95% confidence, that the mean bike lane length in the group of non-white census tracts is 2790.904 feet and the mean in white majority census tracts is 3585.035 feet. This is a stark contrast. 
 
@@ -363,7 +342,6 @@ We can run the same result as a regression
 
 ```{r}
 bike_race_model <- lm(sum_Length ~ binary_white, data = bikeways2)
-
 summary(bike_race_model)
 ```
 The adjusted R squared in the linear regression does match the square of the correlation coefficient in the above. 
@@ -372,13 +350,10 @@ The adjusted R squared in the linear regression does match the square of the cor
 We are running a linear regression to see if all white majority census tracts have more length of bike lanes than non-majority white census tracts. 
 
 ```{r}
-
 bikeways3 <- bikeways3 %>%
   mutate(binary_white = as.factor(binary_white)) %>%
   mutate(binary_white = relevel(binary_white, "non_white"))
-
 binary_white_model <- lm(sum_Length ~ binary_white, data = bikeways3)
-
 summary(binary_white_model)
 ```
 
@@ -388,7 +363,6 @@ The above regression is helpful in determining if all white majority bike lane l
 
 ```{r}
 full_model <- lm(sum_Length ~ percent_res_new + binary_white + pop_E + med_income_E + transport_E, bikeways3)
-
 summary(full_model)
 ```
 
@@ -411,7 +385,6 @@ Then with our new variables, pop_density and percent_bike, we decided to run a n
 
 ```{r}
 full_model2 <- lm(sum_Length ~ percent_res_new + binary_white + pop_density + med_income_E + percent_bike, bikeways3)
-
 summary(full_model2)
 ```
 ## Non-linear Transformation: Base-two Logarithm
@@ -424,7 +397,6 @@ bikeways3$log_pop_density <- log(bikeways3$pop_density)
 
 ```{r}
 full_model3 <- lm(sum_Length ~ percent_res_new + binary_white + log_pop_density + med_income_E + percent_bike, bikeways3)
-
 summary(full_model3)
 ```
 
@@ -437,7 +409,6 @@ coeff_names_scaled <- c("Constant" = "(Intercept)",
                  "Log population density (people/sqmi)" = "log_pop_density",
                  "Median income ($)" = "med_income_E",
                  "Bike commuters (%)" = "percent_bike")
-
 export_summs(full_model2, full_model3,
              error_format = "(p = {p.value})",
              error_pos = "same",
@@ -450,34 +421,37 @@ After we log transformed population density and re-ran the regression, log_pop_d
 
 Overall, we argue that the non-linear transformation, using a base-two log, is in fact a better predictor of change and does make our data easier to interpret.
 
-##Interactions
+# Assignment 6: Interactions
+
+Based on the results of our log transformation we have decided to interact median income with majority white and majority non-white census tracts. We are curious if the relationship between median income and bike lane length depends on the majority race in a tract.
 
 ```{r}
-coeff_names_scaled <- c("Constant" = "(Intercept)",
+coeff_names_interaction <- c("Constant" = "(Intercept)",
                  "New residents (%)" = "percent_res_new",
                  "Majority white (binary)" = "binary_whitewhite",
                  "Log population density (people/sqmi)" = "log_pop_density",
                  "Median income ($)" = "med_income_E",
                  "Bike commuters (%)" = "percent_bike")
 
-interaction_model <- lm(sum_Length ~ percent_res_new + binary_white + log_pop_density + med_income_E + percent_bike, bikeways3)
+interaction_model <- lm(sum_Length ~ percent_res_new + binary_white + log_pop_density + med_income_E + percent_bike + med_income_E*binary_white, bikeways3)
 
-export_summs(full_model2, full_model3,
+export_summs(full_model3, interaction_model,
              error_format = "(p = {p.value})",
              error_pos = "same",
-             model.names = c("Model 4",
-                             "Model 5"))
+             model.names = c("Logged",
+                             "Interaction"))
 ```
+
+When we interacted these variables our model fit did not improve, but the above chart highlights that as med income increases in white majority tracts, the bike lane length decreases. This is a negative relationship. In contrast, non-white majority tracts increases by 0.09 (the difference between -0.07 and 0.02). The relationship between med income and sum_Length in non white census tracts is positive. We are curious to plot these results to visualize the interaction.
 
 ```{r}
-interact_plot(interaction_model, pred = percent_res_new, modx = majority_vote,
+interact_plot(interaction_model, pred = med_income_E, modx = binary_white,
               interval = TRUE) +
-  scale_x_continuous(breaks = breaks <- c(-2, -1, 0, 1, 2),
-                     labels = round(breaks * 10 + mean(my_data$med_age_E, na.rm = TRUE)),
-                     name = "") +
-  scale_y_continuous(name = "")
+  scale_x_continuous(name = "Median income ($)") +
+  scale_y_continuous(name = "Predicted bike lane length (ft)")
 ```
 
+For non-white tracts, as median income increases, bike lane length also increases. Thus, there is a positive relationship For white census tracts, however, as median income increases, bike lane length decreases. Thus, there is a negative relationship. At approximately $30,000 the predicted bike lane length is the same regardless of non white and white majority census tracts.
  
 # References
 
