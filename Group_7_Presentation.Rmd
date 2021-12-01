@@ -1,5 +1,5 @@
 ---
-title: "Quant_Group_7"
+title: "Bike Lanes & Gentrification in Los Angeles"
 author: "E.Sheild_N.Levine_G.Barrett-Jackson"
 date: "12/1/21"
 output: 
