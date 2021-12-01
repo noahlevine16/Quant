@@ -3,7 +3,11 @@ title: "Quant_Group_7"
 author: "E.Sheild_N.Levine_G.Barrett-Jackson"
 date: "12/1/21"
 output: 
-  rmdformats::downcute
+  html_document:
+    theme: readable
+    toc: true
+    toc_depth: 3
+    toc_float: true
 ---
 
 ```{r setup, include=FALSE}
